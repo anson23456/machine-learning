@@ -1,0 +1,58 @@
+def model_test(symbol, model, cv='kfold',scores=['roc_auc'], weight=None):
+    n_splits=10
+    df = data[symbol][feature_names + ['Return']].copy()
+    features = df.iloc[:, :-1]
+    df['Class'] = np.where(df.iloc[:, -1] > 0, 1, 0)
+    targets = df.iloc[:, -1]
+    x_train, x_test, y_train, y_test = train_test_split(features, targets, test_size=0.3, random_state=0)
+    
+    ss = StandardScaler()
+    ss.fit(x_train)
+    x_train = pd.DataFrame(ss.transform(x_train))
+    x_test = pd.DataFrame(ss.transform(x_test))
+    
+            
+    tuned_parameter=tuned_parameters[model]    
+    
+    
+    for score in scores:    
+        print("# Tuning hyper-parameters for %s" % score)
+        print()
+        if cv == 'kfold':
+            cur_cv = n_splits
+        elif cv == 'TSsplit':
+            cur_cv = TimeSeriesSplit(n_splits=n_splits).split(x_train)
+        elif cv == 'TSsplit_fixed':
+            cur_cv = TimeSeriesSplit(n_splits=n_splits, max_train_size=10).split(x_train)
+        
+        clf = GridSearchCV(
+            models[model], 
+            tuned_parameter, 
+            cv=cur_cv,
+            scoring='%s' % score
+        )    
+        #scoring='%s_macro' % score：precision_macro、recall_macro是用于multiclass/multilabel任务的
+        clf.fit(x_train, y_train)
+        print("Best parameters set found on development set:")
+        print()
+        print(clf.best_params_)
+        print()
+        print("Grid scores on development set:")
+        print()
+        means = clf.cv_results_['mean_test_score']
+        stds = clf.cv_results_['std_test_score']
+        for mean, std, params in zip(means, stds, clf.cv_results_['params']):
+            print("%0.2f (+/-%0.02f) for %r"
+                  % (mean, std * 2, params))
+         
+        print()
+        print("Detailed classification report:")
+        print()
+        print("The model is trained on the full development set.")
+        print("The scores are computed on the full evaluation set.")
+        print()
+        y_true, y_pred = y_test, clf.predict(x_test)
+        print(classification_report(y_true, y_pred))
+        print()
+    
+        metrics.plot_roc_curve(clf,x_test, y_test)
